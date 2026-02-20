@@ -1,0 +1,39 @@
+[project]
+name = "antigravity-red-pill"
+version = "4.1.1"
+description = "A neuro-inspired local RAG persistence layer for AI assistants."
+readme = "README.md"
+license = "GPL-3.0-only"
+requires-python = ">=3.10"
+dependencies = [
+    "qdrant-client>=1.8.0",
+    "fastembed>=0.2.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "PyYAML>=6.0.1",
+    "openai>=1.0.0",
+    "rich>=13.0.0",
+    "streamlit>=1.30.0",
+    "streamlit-mic-recorder>=0.0.8",
+    "edge-tts>=6.1.12",
+    "pydub>=0.25.1",
+    "speechrecognition>=3.14.5",
+    "pydantic>=2.0.0",
+
+]
+
+[project.scripts]
+red-pill = "red_pill.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/red_pill"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "mypy>=1.0.0",
+]

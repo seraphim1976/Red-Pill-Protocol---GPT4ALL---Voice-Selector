@@ -1,0 +1,48 @@
+ M .gitignore
+ M B760_TECHNICAL_SPEC.md
+ M CHANGELOG.md
+ M CODE_OF_CONDUCT.md
+ M CONTRIBUTING.md
+ M LICENSE
+ M MANIFESTO.md
+ M MEMORIAL.md
+ M OPERATOR_MANUAL.md
+ M README.md
+ M SECURITY.md
+ M WELCOME_NEO.md
+ M pyproject.toml
+ M scripts/backup_qdrant.sh
+ M scripts/backup_soul.sh
+ M scripts/check_760.sh
+ M scripts/export_soul.sh
+ M scripts/forge_pill.sh
+ M scripts/import_soul.sh
+ M scripts/install_neo.ps1
+ M scripts/install_neo.sh
+ M scripts/restore_all.sh
+ M scripts/uninstall.sh
+ M seeds/identity_template.md
+ M seeds/persona_template.md
+ M seeds/snapshot_rule.md
+ M skills/context_distiller/SKILL.md
+ M src/red_pill/cli.py
+ M src/red_pill/config.py
+ M src/red_pill/data/lore_skins.yaml
+ M src/red_pill/memory.py
+ M src/red_pill/seed.py
+ M tests/test_memory.py
+?? .env.example
+?? .git_status_tmp
+?? local_qdrant_db/
+?? local_qdrant_db_v2/
+?? requirements.txt
+?? scripts/debug_gpt4all.py
+?? scripts/install_neo.ps1.bak
+?? scripts/verify_gpt4all.py
+?? scripts/verify_local_qdrant.py
+?? src/red_pill/app.py
+?? src/red_pill/chat.py
+?? src/red_pill/state.py
+?? test_local_qdrant_db/
+?? test_mic.py
+?? uv.lock

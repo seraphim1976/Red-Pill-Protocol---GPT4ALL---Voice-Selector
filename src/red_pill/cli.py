@@ -1,0 +1,155 @@
+import sys
+import argparse
+import logging
+import yaml
+import os
+import red_pill.config as cfg
+from red_pill.memory import MemoryManager
+from red_pill.seed import seed_project
+from red_pill.chat import chat_loop
+from red_pill.config import LOG_LEVEL
+
+logger = logging.getLogger(__name__)
+
+def main():
+    parser = argparse.ArgumentParser(description="Red Pill Protocol CLI - Memory Persistence Layer")
+    parser.add_argument("--url", help="Qdrant URL (defaults to localhost:6333)")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # Mode command
+    mode_parser = subparsers.add_parser("mode", help="Switch Lore Skin (Operational Mode)")
+    mode_parser.add_argument("skin", help="Skin name (matrix, cyberpunk, 760, dune)")
+
+    # Seed command
+    subparsers.add_parser("seed", help="Initialize collections and seed genesis memories")
+
+    # Chat command
+    subparsers.add_parser("chat", help="Start interactive ChatGPT session (Red Pill)")
+
+    # Web UI command
+    web_parser = subparsers.add_parser("web", help="Start Streamlit Web Interface")
+    web_parser.add_argument("--mode", choices=["embedded", "server"], help="Qdrant mode (embedded/server)")
+
+    # Add command
+    add_parser = subparsers.add_parser("add", help="Add a new memory engram")
+    add_parser.add_argument("type", choices=["work", "social"], help="Collection type")
+    add_parser.add_argument("content", help="Memory text to store")
+
+    # Search command
+    search_parser = subparsers.add_parser("search", help="Search and reinforce memories")
+    search_parser.add_argument("type", choices=["work", "social"], help="Collection type")
+    search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument("--limit", type=int, default=3, help="Max results")
+    search_parser.add_argument("--deep", action="store_true", help="Enable Deep Recall (bypass dormancy filters)")
+
+    # Erode command
+    erode_parser = subparsers.add_parser("erode", help="Apply B760 erosion cycle")
+    erode_parser.add_argument("type", choices=["work", "social"], help="Collection type")
+    erode_parser.add_argument("--rate", type=float, help="Custom erosion rate")
+
+    # Diag command
+    diag_parser = subparsers.add_parser("diag", help="Collection diagnostics")
+    diag_parser.add_argument("type", choices=["work", "social"], help="Collection type")
+
+    args = parser.parse_args()
+
+    # Configure logging
+    log_level = logging.DEBUG if args.verbose else getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
+    
+    # manager = MemoryManager(url=args.url) if args.url else MemoryManager() 
+    # REMOVED: Premature instantiation. We'll instantiate it only when needed.
+    # But wait, seed command needs manager. And other commands too.
+    # We should instantiate it inside the command blocks or helper.
+    
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    if args.command == "mode":
+        from red_pill.state import set_skin
+
+        # Load lore skins
+        data_path = os.path.join(os.path.dirname(__file__), "data", "lore_skins.yaml")
+        try:
+            with open(data_path, 'r') as f:
+                raw_skins = yaml.safe_load(f).get('modes', {})
+                # Ensure all keys are strings (fixes naming bugs like integer 760)
+                skins = {str(k): v for k, v in raw_skins.items()}
+        except Exception as e:
+            logger.error(f"Could not load lore skins: {e}")
+            sys.exit(1)
+
+        if args.skin not in skins:
+            print(f"Skin '{args.skin}' not found. Available: {', '.join(skins.keys())}")
+            sys.exit(1)
+
+        skin = skins[args.skin]
+        set_skin(args.skin) # Persist the selection!
+
+        print(f"--- Operational Mode: {args.skin.upper()} ---")
+        for key, value in skin.items():
+            print(f"{key.capitalize().replace('_', ' ')}: {value}")
+        
+        print(f"\n[Protocol] Visual Mod Activated: {args.skin.upper()}")
+        print("[Protocol] Soul mapping updated. Re-calibrating identity anchor...")
+        return
+
+    if args.command == "seed":
+        manager = MemoryManager(url=args.url) if args.url else MemoryManager()
+        seed_project(manager)
+        return
+
+    if args.command == "chat":
+        chat_loop()
+        return
+
+    if args.command == "web":
+        import subprocess
+        
+        # Prepare environment
+        env = os.environ.copy()
+        if args.mode:
+            env["QDRANT_MODE"] = args.mode
+            print(f"--- Launching Web Interface in {args.mode.upper()} mode ---", flush=True)
+
+        # Launch Streamlit
+        app_path = os.path.join(os.path.dirname(__file__), "app.py")
+        subprocess.run([sys.executable, "-m", "streamlit", "run", app_path], env=env)
+        return
+
+    # For commands that require 'type'
+    collection = "social_memories" if args.type == "social" else "work_memories"
+
+    try:
+        manager = MemoryManager(url=args.url) if args.url else MemoryManager()
+        if args.command == "add":
+            manager.add_memory(collection, args.content)
+        elif args.command == "search":
+            # Auto-detect Deep Recall phrases from config
+            deep_trigger = any(phrase in args.query.lower() for phrase in cfg.DEEP_RECALL_TRIGGERS)
+            is_deep = args.deep or deep_trigger
+            
+            results = manager.search_and_reinforce(collection, args.query, limit=args.limit, deep_recall=is_deep)
+            if is_deep:
+                print(f"--- [DEEP RECALL ACTIVATED] ---")
+            for hit in results:
+                score = hit.payload.get("reinforcement_score", 0.0)
+                status = " [IMMUNE]" if hit.payload.get("immune") else f" (Score: {score})"
+                print(f"- {hit.payload['content']}{status}")
+        elif args.command == "erode":
+            manager.apply_erosion(collection, rate=args.rate) if args.rate else manager.apply_erosion(collection)
+        elif args.command == "diag":
+            stats = manager.get_stats(collection)
+            print(f"--- Diagnostics: {collection} ---")
+            for key, value in stats.items():
+                print(f"{key.capitalize().replace('_', ' ')}: {value}")
+    except Exception as e:
+        logger.error(f"Critical Protocol Failure: {e}")
+        print("\n[⚠️] Connection to the substrate lost or command refused. Check Qdrant status.")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

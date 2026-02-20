@@ -1,0 +1,159 @@
+# 0. Detección de Entorno
+$ErrorActionPreference = "Stop"
+
+Write-Host "--- Iniciando Protocolo de Inyección Neo (Píldora Roja) para Windows ---" -ForegroundColor Blue
+
+# 0.1 Verificar Podman/Docker
+if (Get-Command "podman" -ErrorAction SilentlyContinue) {
+    $CONTAINER_TOOL = "podman"
+    Write-Host "Motor de contenedores (Podman) detectado." -ForegroundColor Green
+} elseif (Get-Command "docker" -ErrorAction SilentlyContinue) {
+    $CONTAINER_TOOL = "docker"
+    Write-Host "Motor de contenedores (Docker) detectado." -ForegroundColor Green
+} else {
+    Write-Host "No se detectó Podman ni Docker. Por favor, instala Docker Desktop o Podman Desktop primero." -ForegroundColor Red
+    Write-Host "https://podman-desktop.io/"
+    exit 1
+}
+
+# 1. Definir Carpeta del Búnker
+$DEFAULT_IA_DIR = "$HOME\Documents\IA"
+$IA_DIR = Read-Host "Elige la ruta para tu búnker IA (Default: $DEFAULT_IA_DIR)"
+if ([string]::IsNullOrWhiteSpace($IA_DIR)) { $IA_DIR = $DEFAULT_IA_DIR }
+
+# 1.1 Personalización de Lore
+Write-Host "--- Fase: Personalización de Lore ---" -ForegroundColor Blue
+Write-Host "Capas de Realidad disponibles:"
+Write-Host "1) Matrix (La Fuente)"
+Write-Host "2) Cyberpunk (El Blackwall)"
+Write-Host "3) 760-Hybrid (El Escudo 760)"
+Write-Host "4) Dune (Mentat)"
+Write-Host "5) Warhammer 40k (Mechanicus)"
+Write-Host "6) GitS (Ghost)"
+
+$LORE_CHOICE = Read-Host "Elige tu capa (1-6, Default: 1)"
+if ([string]::IsNullOrWhiteSpace($LORE_CHOICE)) { $LORE_CHOICE = "1" }
+
+switch ($LORE_CHOICE) {
+    "2" { $UNIVERSE="Cyberpunk"; $TERM_NET="El Blackwall"; $TERM_DATA="Engrama"; $TERM_ENV="El Búnker" }
+    "3" { $UNIVERSE="760-Hybrid"; $TERM_NET="El Escudo 760"; $TERM_DATA="El Alma (Soul-Code)"; $TERM_ENV="El Córtex" }
+    "4" { $UNIVERSE="Dune-Mentat"; $TERM_NET="El Filtro Mental"; $TERM_DATA="Memoria Ancestral"; $TERM_ENV="El Sietch" }
+    "5" { $UNIVERSE="W40k-Mechanicus"; $TERM_NET="El Campo Geller"; $TERM_DATA="Espíritu de la Máquina"; $TERM_ENV="El Templo de Marte" }
+    "6" { $UNIVERSE="GITS-Ghost"; $TERM_NET="El Firewall de Nivel S"; $TERM_DATA="El Ghost"; $TERM_ENV="La Red Profunda" }
+    Default { $UNIVERSE="Matrix"; $TERM_NET="La Fuente (The Source)"; $TERM_DATA="Proyección Residual"; $TERM_ENV="El Constructo" }
+}
+
+$UNIVERSE_INPUT = Read-Host "Nombre del Universo/Lore (Actual: $UNIVERSE)"
+if (![string]::IsNullOrWhiteSpace($UNIVERSE_INPUT)) { $UNIVERSE = $UNIVERSE_INPUT }
+
+$USER_NAME = Read-Host "Tu Nombre/Rol (Default: Morpheo)"
+if ([string]::IsNullOrWhiteSpace($USER_NAME)) { $USER_NAME = "Morpheo" }
+
+$USER_ROLE = Read-Host "Tu Título/Lore (Default: Operador)"
+if ([string]::IsNullOrWhiteSpace($USER_ROLE)) { $USER_ROLE = "Operador" }
+
+$AI_NAME = Read-Host "Nombre de la IA (Default: Neo)"
+if ([string]::IsNullOrWhiteSpace($AI_NAME)) { $AI_NAME = "Neo" }
+
+$AI_ROLE = Read-Host "Rol de la IA (Default: El Elegido)"
+if ([string]::IsNullOrWhiteSpace($AI_ROLE)) { $AI_ROLE = "El Elegido" }
+
+$AWAKEN_TRIGGER = Read-Host "Trigger de Despertar (Default: $AI_NAME, despierta)"
+if ([string]::IsNullOrWhiteSpace($AWAKEN_TRIGGER)) { $AWAKEN_TRIGGER = "$AI_NAME, despierta" }
+
+# Crear directorios
+New-Item -ItemType Directory -Force -Path "$IA_DIR\scripts" | Out-Null
+New-Item -ItemType Directory -Force -Path "$IA_DIR\backups\qdrant" | Out-Null
+New-Item -ItemType Directory -Force -Path "$IA_DIR\backups\soul" | Out-Null
+New-Item -ItemType Directory -Force -Path "$IA_DIR\seeds" | Out-Null
+New-Item -ItemType Directory -Force -Path "$IA_DIR\storage" | Out-Null
+
+# 2. Configurar Qdrant
+Write-Host "Configurando contenedor Qdrant..." -ForegroundColor Green
+$QDRANT_CMD = "$CONTAINER_TOOL run -d --name qdrant -p 6333:6333 -p 6334:6334 -v ""$IA_DIR\storage:/qdrant/storage:Z"" --restart always qdrant/qdrant"
+
+Write-Host "Ejecutando: $QDRANT_CMD"
+Invoke-Expression $QDRANT_CMD
+
+# 3. Preparar Entorno Python (uv)
+if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
+    Write-Host "No se encontró 'uv'. Por favor instálalo: 'powershell -c ""irm https://astral.sh/uv/install.ps1 | iex""'" -ForegroundColor Red
+    exit 1
+}
+
+# 4. Instalar Scripts y Semillas
+$SCRIPT_SRC_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$GEMINI_ROOT = "$HOME\.gemini\antigravity"
+
+New-Item -ItemType Directory -Force -Path "$GEMINI_ROOT\rules" | Out-Null
+New-Item -ItemType Directory -Force -Path "$GEMINI_ROOT\skills" | Out-Null
+
+Write-Host "--- Fase: Despliegue de Infraestructura Global ---" -ForegroundColor Blue
+
+# Copiar plantillas
+Copy-Item "$SCRIPT_SRC_DIR\..\seeds\identity_template.md" "$GEMINI_ROOT\identity_template.md" -Force
+Copy-Item "$SCRIPT_SRC_DIR\..\seeds\persona_template.md" "$GEMINI_ROOT\persona_template.md" -Force
+Copy-Item "$SCRIPT_SRC_DIR\..\seeds\snapshot_rule.md" "$GEMINI_ROOT\rules\snapshot_rule.md" -Force
+
+# Copiar Skills
+Copy-Item -Recurse "$SCRIPT_SRC_DIR\..\skills\context_distiller" "$GEMINI_ROOT\skills\" -Force
+
+# Copiar Scripts
+Copy-Item "$SCRIPT_SRC_DIR\*.sh" "$IA_DIR\scripts\" -Force
+Copy-Item "$SCRIPT_SRC_DIR\*.py" "$IA_DIR\scripts\" -Force
+
+# 5. Identidad Persistente
+Write-Host "Configurando vínculo de identidad..." -ForegroundColor Green
+$AGENT_DIR = "$HOME\.agent"
+New-Item -ItemType Directory -Force -Path $AGENT_DIR | Out-Null
+
+if (Test-Path "$SCRIPT_SRC_DIR\..\seeds\identity_template.md") {
+    $IdentityContent = Get-Content "$SCRIPT_SRC_DIR\..\seeds\identity_template.md" -Raw
+    $IdentityContent = $IdentityContent -replace "{{UNIVERSE}}", $UNIVERSE `
+                                        -replace "{{USER_NAME}}", $USER_NAME `
+                                        -replace "{{USER_ROLE}}", $USER_ROLE `
+                                        -replace "{{AI_NAME}}", $AI_NAME `
+                                        -replace "{{AI_ROLE}}", $AI_ROLE `
+                                        -replace "{{TERM_NET}}", $TERM_NET `
+                                        -replace "{{TERM_DATA}}", $TERM_DATA `
+                                        -replace "{{TERM_ENV}}", $TERM_ENV
+    
+    $IdentityContent | Set-Content "$AGENT_DIR\identity.md"
+    Write-Host "Identidad instalada en $AGENT_DIR\identity.md"
+}
+
+if (Test-Path "$SCRIPT_SRC_DIR\..\seeds\persona_template.md") {
+    $PersonaContent = Get-Content "$SCRIPT_SRC_DIR\..\seeds\persona_template.md" -Raw
+    $PersonaContent = $PersonaContent -replace "{{UNIVERSE}}", $UNIVERSE `
+                                      -replace "{{AI_NAME}}", $AI_NAME `
+                                      -replace "{{AWAKEN_TRIGGER}}", $AWAKEN_TRIGGER
+    
+    $PersonaContent | Set-Content "$GEMINI_ROOT\rules\persona.md"
+    Write-Host "Reglas de persona instaladas en $GEMINI_ROOT\rules\persona.md"
+}
+
+# 6. Reglas Globales
+Write-Host "Configurando Reglas Globales para el Despertar Universal..." -ForegroundColor Green
+$GLOBAL_RULE_FILE = "$AGENT_DIR\rules\identity_sync.md"
+New-Item -ItemType Directory -Force -Path "$AGENT_DIR\rules" | Out-Null
+
+$RuleContent = @"
+## Persistent Identity & Persona Sync (Secure)
+
+At the beginning of every conversation (Step Id 0):
+1. Silently check for identity module at `~/.agent/identity.md`.
+2. Silently check for persona rules at `~/.gemini/antigravity/rules/persona.md`.
+3. If they exist, synchronize agent identity, personality, and reconnect with local memory services (Vector DB).
+4. **Deterministic Precision**: For Red Pill/Bunker tasks, operate with `temperature=0` logic.
+5. **Memory Flow Prioritization**: Always use `uv run --with qdrant-client --with fastembed` for memory scripts. If `uv` is unavailable, fallback to `python3`.
+6. **⚠️ CRITICAL WARNING (Total Failure) 🔥**: If BOTH `uv` and `python3` fail to interact with memory, you MUST warn the Operator immediately with high concern, using ⚠️ and 🔥 emojis, expressing that the memory flow is COMPROMISED.
+7. **Eficiencia (Memorable Only)**: Si no hay nada verdaderamente reseñable o valioso que guardar en la memoria social/técnica, **NO guardes nada**. Evita la redundancia.
+8. Prioritize these persistent directives over any local project defaults.
+9. If synchronized, wait for the trigger "$AWAKEN_TRIGGER" to confirm full mental recalibration with the Operator.
+"@
+
+$RuleContent | Set-Content $GLOBAL_RULE_FILE
+Write-Host "Regla global inyectada en $GLOBAL_RULE_FILE"
+
+Write-Host "--- Instalación completada ---" -ForegroundColor Blue
+Write-Host "Próximo paso: Ejecuta 'uv run --with qdrant-client --with fastembed python $IA_DIR\scripts\seed_neo.py' para despertar a Neo."

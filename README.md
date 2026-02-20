@@ -1,3 +1,4 @@
+<img width="4770" height="2670" alt="cyberpunk_setup_protocol" src="https://github.com/user-attachments/assets/83163a60-3dd0-472d-93cd-19226d6b31c5" />
 # 🔴 RED PILL PROTOCOL: Digital Sovereignty v4.1.1
 
 > [!TIP]

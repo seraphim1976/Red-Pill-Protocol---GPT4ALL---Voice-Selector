@@ -57,17 +57,20 @@ def clean_text_for_tts(text: str) -> str:
 # -----------------------------------------------------------------------------
 # Image Generation Fallback: Free Fast API
 # -----------------------------------------------------------------------------
-def generate_image_free(prompt: str) -> bytes:
+def generate_image_free(prompt: str, status=None) -> bytes:
     """Generates an image using Hugging Face (tries multiple models as fallback)."""
     hf_key = cfg.HF_API_KEY
     if not hf_key:
+        if status: status.error("VISUAL CORTEX OFFLINE: Falta HF_API_KEY al fitxer .env")
         return None
     
-    # Updated models for the new HF Router API
     models = [
         "black-forest-labs/FLUX.1-schnell",
         "stabilityai/sdxl-turbo",
-        "runwayml/stable-diffusion-v1-5"
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        "runwayml/stable-diffusion-v1-5",
+        "Lykon/DreamShaper",
+        "prompthero/openjourney"
     ]
     
     headers = {
@@ -78,23 +81,53 @@ def generate_image_free(prompt: str) -> bytes:
     
     for model in models:
         api_url = f"https://router.huggingface.co/hf-inference/models/{model}"
-        try:
-            print(f"BUNKER: Attempting Visual Engram with {model}...")
-            response = requests.post(api_url, headers=headers, json=payload, timeout=45)
-            
-            if response.status_code == 200:
-                print(f"BUNKER: Visual Engram generated successfully with {model}.")
-                return response.content
-            else:
-                print(f"BUNKER: Model {model} failed with status {response.status_code}: {response.text[:100]}")
-                continue
+        if status: status.write(f"BUNKER: Attempting Visual Engram with {model}...")
+        
+        # Retry logic for model loading (503)
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"BUNKER: Attempting Visual Engram with {model} (Attempt {attempt+1}/{max_retries})...")
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
                 
-        except Exception as e:
-            print(f"BUNKER: Error with model {model}: {e}")
-            continue
+                if response.status_code == 200:
+                    print(f"BUNKER: Visual Engram generated successfully with {model}.")
+                    if status: status.write(f"✅ Success with {model}")
+                    return response.content
+                
+                elif response.status_code == 401:
+                    print(f"BUNKER: HF Error 401: Invalid API Key.")
+                    if status: status.error(f"❌ HF Error 401: Clau API no vàlida. Revisa el teu .env")
+                    return None # Stop trying other models for 401
+                
+                elif response.status_code == 503:
+                    try:
+                        error_data = response.json()
+                        wait_time = error_data.get("estimated_time", retry_delay)
+                        print(f"BUNKER: Model {model} is loading. Waiting {wait_time:.1f}s...")
+                        if status: status.write(f"⏳ {model} is loading. Waiting {wait_time:.1f}s...")
+                        time.sleep(min(wait_time, 20))
+                    except:
+                        time.sleep(retry_delay)
+                    continue
+                
+                else:
+                    print(f"BUNKER: Model {model} failed with status {response.status_code}: {response.text[:100]}")
+                    if status: status.write(f"⚠️ {model} failed (Status {response.status_code})")
+                    break
+                    
+            except Exception as e:
+                print(f"BUNKER: Error with model {model}: {e}")
+                if status: status.write(f"⚠️ Error with {model}: {e}")
+                break
             
     print("BUNKER: All visual fallback models failed.")
+    if status: status.write("❌ All HF models failed.")
     return None
+
+
 
 # -----------------------------------------------------------------------------
 # Configuration & Customization
@@ -665,7 +698,6 @@ if prompt:
                 relevant = st.session_state.memory_manager.search_and_reinforce("social_memories", prompt, limit=3)
                 if relevant:
                     context_text = "\n".join([f"- {m.payload['content']}" for m in relevant])
-                    st.write(relevant)
                     status.update(label=f"RECOVERED {len(relevant)} ENGRAMS", state="complete")
                 else:
                     status.update(label="NO MATCHING ENGRAMS", state="complete")
@@ -829,7 +861,13 @@ if prompt:
                 
                 # Fallback: Keyword detection for local LLMs that don't support tool calls
                 if not img_prompt:
-                    image_keywords = ["genera una imatge", "genera imatge", "generar imagen", "generate image", "generate an image", "crea una imatge", "fes una imatge", "dibuixa", "genera foto", "genera una foto", "make an image", "create an image", "draw"]
+                    image_keywords = [
+                        "genera una imatge", "genera imatge", "imatge", "imatges", "fes una imatge", "fes-me una imatge",
+                        "generar imagen", "genera imagen", "imagen", "imagenes", "haz una imagen", "hazme una imagen",
+                        "generate image", "generate an image", "image", "images", "make an image",
+                        "dibuixa", "dibuix", "dibuja", "dibujo", "draw", "drawing",
+                        "genera foto", "genera una foto", "foto", "photo", "photography"
+                    ]
                     prompt_lower = prompt.lower()
                     if any(kw in prompt_lower for kw in image_keywords):
                         # Use the user's original prompt as the image prompt
@@ -857,16 +895,14 @@ if prompt:
                                 img_raw = requests.get(img_url).content
                             else:
                                 # Fallback to Hugging Face Free API
-                                img_raw = generate_image_free(img_prompt)
+                                img_raw = generate_image_free(img_prompt, status=status)
                                 if img_raw:
-                                    is_base64 = False
                                     st.image(img_raw, caption=f"VISUAL CORTEX ENGRAM (HF): {img_prompt}")
-                                    img_url = None
                                 else:
                                     if not cfg.HF_API_KEY:
-                                        st.error("VISUAL CORTEX OFFLINE: Afegeix HF_API_KEY al teu .env (huggingface.co/settings/tokens)")
+                                        status.error("VISUAL CORTEX OFFLINE: Afegeix HF_API_KEY al teu .env")
                                     else:
-                                        st.error("VISUAL CORTEX FAILURE: Hugging Face API Error")
+                                        status.error("VISUAL CORTEX FAILURE: All visual fallback models (HF) failed.")
                                     full_response += f"\n\n[SYSTEM ALERT: VISUAL CORTEX FAILURE]"
 
                             # --- LOCAL SAVING TO THE BUNKER ---

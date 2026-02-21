@@ -5,6 +5,17 @@ Ask your assistant / Pídele a tu asistente: "Please, initiate the awakening."
 
 Deploy: bash scripts/install_neo.sh
 
+If you want to work OFFLINE: 
+
+uv run red-pill web --mode embedded
+
+🔴 SYSTEM STATUS
+BUNKER: OFFLINE
+
+Storage folder local_qdrant_db_v2 is already accessed by another instance of Qdrant client. If you require concurrent access, use Qdrant server instead.
+
+
+
 
 ![WhatsApp Image 2026-02-21 at 17 11 38](https://github.com/user-attachments/assets/707153a8-4b0a-4306-ab4f-f2b072a61aaf)
 Added voice selector ( male /female ) Catalan/Spanish/English, Text and image uploader, and Image Generator.

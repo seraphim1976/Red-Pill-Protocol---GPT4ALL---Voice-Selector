@@ -1,4 +1,12 @@
+Added voice selector ( male /female ) Catalan/Spanish/English, Text and image uploader, and Image Generator.
+
+About Image Generator: add paid OpenAI api-key or Free Hugging Face api-key ( add all the permissions in https://huggingface.co/settings/tokens )
+inside .env file. With Hugging Face Free Plan sometimes it is necessary to "invalidate and refresh api-key" on it's page because it breaks. And sometimes it is necessary to PURGE CACHE ( RESET ) inside de WEB UI. 
+
+
+![WhatsApp Image 2026-02-21 at 12 47 27](https://github.com/user-attachments/assets/d4a9ccfa-ff2f-49e7-8966-59f88b4c9801)
 <img width="4770" height="2670" alt="cyberpunk_setup_protocol" src="https://github.com/user-attachments/assets/83163a60-3dd0-472d-93cd-19226d6b31c5" />
+
 # 🔴 RED PILL PROTOCOL: Digital Sovereignty v4.1.1
 
 Repositorio original para Antigravity: https://github.com/joanfgarcia/antigravity-red-pill

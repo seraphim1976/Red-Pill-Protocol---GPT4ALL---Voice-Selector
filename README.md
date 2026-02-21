@@ -1,3 +1,4 @@
+![WhatsApp Image 2026-02-21 at 12 47 27](https://github.com/user-attachments/assets/55f04270-a521-4199-920b-ed2c27ee9be7)
 <img width="4770" height="2670" alt="cyberpunk_setup_protocol" src="https://github.com/user-attachments/assets/83163a60-3dd0-472d-93cd-19226d6b31c5" />
 # 🔴 RED PILL PROTOCOL: Digital Sovereignty v4.1.1
 

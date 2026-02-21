@@ -35,6 +35,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "gpt-3.5-turbo")
 
+# Hugging Face Configuration (Free Image Generation)
+HF_API_KEY = os.getenv("HF_API_KEY", "").strip() if os.getenv("HF_API_KEY") else None
+
 # Fallback for Local LLM
 if OPENAI_BASE_URL and not OPENAI_API_KEY:
     OPENAI_API_KEY = "dummy"

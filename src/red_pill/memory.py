@@ -216,7 +216,8 @@ class MemoryManager:
             is_attr_error = isinstance(e, AttributeError) and ("query_points" in str(e) or "search" in str(e))
             
             if is_404 or is_attr_error:
-                logger.warning(f"Falling back from query_points due to compatibility issue: {e}")
+                # Suppress warning for expected fallback
+                logger.debug(f"Falling back from query_points due to compatibility issue: {e}")
                 
                 # Robust multi-stage search fallback
                 search_results = None

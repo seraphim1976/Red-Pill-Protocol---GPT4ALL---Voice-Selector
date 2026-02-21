@@ -5,6 +5,9 @@ from red_pill.memory import MemoryManager
 from red_pill.state import get_skin as get_active_skin
 from openai import OpenAI
 import base64
+import requests
+import json
+import time
 
 # PDF Support Removed per user request
 PDF_AVAILABLE = False
@@ -50,6 +53,48 @@ def clean_text_for_tts(text: str) -> str:
     text = re.sub(r'\n{2,}', ' ', text)
     text = re.sub(r'[ \t]+', ' ', text)
     return text.strip()
+
+# -----------------------------------------------------------------------------
+# Image Generation Fallback: Free Fast API
+# -----------------------------------------------------------------------------
+def generate_image_free(prompt: str) -> bytes:
+    """Generates an image using Hugging Face (tries multiple models as fallback)."""
+    hf_key = cfg.HF_API_KEY
+    if not hf_key:
+        return None
+    
+    # Updated models for the new HF Router API
+    models = [
+        "black-forest-labs/FLUX.1-schnell",
+        "stabilityai/sdxl-turbo",
+        "runwayml/stable-diffusion-v1-5"
+    ]
+    
+    headers = {
+        "Authorization": f"Bearer {hf_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {"inputs": prompt}
+    
+    for model in models:
+        api_url = f"https://router.huggingface.co/hf-inference/models/{model}"
+        try:
+            print(f"BUNKER: Attempting Visual Engram with {model}...")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=45)
+            
+            if response.status_code == 200:
+                print(f"BUNKER: Visual Engram generated successfully with {model}.")
+                return response.content
+            else:
+                print(f"BUNKER: Model {model} failed with status {response.status_code}: {response.text[:100]}")
+                continue
+                
+        except Exception as e:
+            print(f"BUNKER: Error with model {model}: {e}")
+            continue
+            
+    print("BUNKER: All visual fallback models failed.")
+    return None
 
 # -----------------------------------------------------------------------------
 # Configuration & Customization
@@ -414,48 +459,51 @@ if "memory" not in st.session_state:
         st.session_state.memory_manager = None
         st.session_state.memory_error = str(e)
 
-if "client" not in st.session_state:
-    api_key = cfg.OPENAI_API_KEY
+if "client" not in st.session_state or st.session_state.get("force_reconnect"):
+    api_key = cfg.OPENAI_API_KEY.strip() if cfg.OPENAI_API_KEY else None
     base_url = cfg.OPENAI_BASE_URL
     
     try:
         if not api_key:
              st.session_state.client = None
-             st.session_state.client_error = "Missing OPENAI_API_KEY"
+             st.session_state.client_error = "Missing OPENAI_API_KEY in .env"
              st.session_state.dalle_client = None
         else:
             st.session_state.client = OpenAI(api_key=api_key, base_url=base_url)
             st.session_state.client_error = None
             
             # --- DALL-E Client (Always connects to real OpenAI) ---
-            # If the user has a real key (starts with sk-), we use it for DALL-E 
-            # even if base_url is pointing elsewhere (Local LLM).
-            # If the key is "dummy", we can't use DALL-E.
             if api_key.startswith("sk-") and api_key != "dummy":
-                # FORCE the base_url to be OpenAI's real API, ignoring environment variable
                 st.session_state.dalle_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1") 
             else:
                 st.session_state.dalle_client = None
+                if not api_key.startswith("sk-"):
+                    st.session_state.client_error = "VISUAL CORTEX requires an 'sk-' OpenAI key."
             
             # Verify connection AND try to auto-detect model if not explicitly set
-            models_response = st.session_state.client.models.list()
-            
-            # If LLM_MODEL_NAME is the default or unset, and we have a local server, grab the first model name
-            if cfg.LLM_MODEL_NAME == "gpt-3.5-turbo" and cfg.OPENAI_BASE_URL:
-                available_models = models_response.data
-                if available_models:
-                    detected_model = available_models[0].id
-                    # Update the config object in session or global-ish state for this run
-                    cfg.LLM_MODEL_NAME = detected_model
-                    st.info(f"Detected local model: {detected_model}")
+            try:
+                models_response = st.session_state.client.models.list()
+                
+                # If LLM_MODEL_NAME is the default or unset, and we have a local server, grab the first model name
+                if cfg.LLM_MODEL_NAME == "gpt-3.5-turbo" and cfg.OPENAI_BASE_URL:
+                    available_models = models_response.data
+                    if available_models:
+                        detected_model = available_models[0].id
+                        cfg.LLM_MODEL_NAME = detected_model
+                        st.info(f"Detected local model: {detected_model}")
+            except Exception as model_e:
+                st.session_state.client_error = f"Connection error: {model_e}"
 
     except Exception as e:
         error_msg = str(e)
         if "401" in error_msg:
-             error_msg = "401 Unauthorized: Invalid API Key. If using Local LLM, ensure OPENAI_BASE_URL is correct and OPENAI_API_KEY is commented out or set to 'dummy'."
+             error_msg = "401 Unauthorized: Invalid API Key. Ensure OPENAI_API_KEY is correct."
         st.session_state.client = None
         st.session_state.client_error = error_msg
         st.session_state.dalle_client = None
+    
+    # Reset force flag
+    st.session_state.force_reconnect = False
 
 # -----------------------------------------------------------------------------
 # Sidebar
@@ -485,8 +533,12 @@ with st.sidebar:
         
         if st.session_state.dalle_client:
             st.success("VISUAL CORTEX: ONLINE")
+        elif cfg.HF_API_KEY:
+            st.success("VISUAL CORTEX: ONLINE (HF FREE)")
+            st.caption("Using Hugging Face FLUX.1-schnell")
         else:
             st.warning("VISUAL CORTEX: OFFLINE")
+            st.caption("Afegeix HF_API_KEY al .env")
             
     else:
         st.error(f"UPLINK: SEVERED")
@@ -496,6 +548,10 @@ with st.sidebar:
     st.markdown("---")
     if st.button("PURGE CACHE (RESET)"):
         st.session_state.messages = []
+        st.rerun()
+
+    if st.button("RESET LINKS (FORCE RECONNECT)"):
+        st.session_state.force_reconnect = True
         st.rerun()
 
     st.markdown("---")
@@ -575,9 +631,12 @@ st.markdown("---")
 for message in st.session_state.messages:
     role = message["role"]
     content = message["content"]
+    image_data = message.get("image")
     
     with st.chat_message(role):
         st.markdown(content)
+        if image_data:
+            st.image(image_data)
 
 # User Input
 with st.container():
@@ -597,6 +656,7 @@ if prompt:
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
+        assistant_image = None
         
         # A. Memory Recall
         context_text = ""
@@ -618,6 +678,7 @@ if prompt:
             f"CONTEXT FROM BUNKER:\n{context_text}\n\n"
             "INSTRUCTIONS:\n"
             "- Adopt a professional, technical, slightly cyberpunk persona.\n"
+            "- If the user asks for an image or visual, use the 'generate_image' tool. (Powered by VISUAL CORTEX)\n"
             "- Be helpful. Provide detailed explanations when necessary, but remain concise for simple queries.\n"
             "- If memories are relevant, reference them implicitly or explicitly.\n"
             "- If the user asks you to remember something, confirm it is being saved to the Bunker.\n"
@@ -756,8 +817,89 @@ if prompt:
                 
                 full_response = content
                 message_placeholder.markdown(full_response)
+                # D. Tool Handling (Image Generation)
+                # Detect if image generation is needed (via tool_calls OR keyword detection)
+                img_prompt = None
                 
-                # D. Persist Memory
+                if tool_calls:
+                    for tool_call in tool_calls:
+                        if tool_call.function.name == "generate_image":
+                            args = json.loads(tool_call.function.arguments)
+                            img_prompt = args.get("prompt")
+                
+                # Fallback: Keyword detection for local LLMs that don't support tool calls
+                if not img_prompt:
+                    image_keywords = ["genera una imatge", "genera imatge", "generar imagen", "generate image", "generate an image", "crea una imatge", "fes una imatge", "dibuixa", "genera foto", "genera una foto", "make an image", "create an image", "draw"]
+                    prompt_lower = prompt.lower()
+                    if any(kw in prompt_lower for kw in image_keywords):
+                        # Use the user's original prompt as the image prompt
+                        img_prompt = prompt
+                
+                if img_prompt:
+                    with st.status(f"GENERATING VISUAL ENGRAM: {img_prompt[:60]}...", expanded=True) as status:
+                        try:
+                            img_url = None
+                            img_raw = None
+                            is_base64 = False
+                            
+                            if st.session_state.dalle_client:
+                                # Use DALL-E 3
+                                dalle_resp = st.session_state.dalle_client.images.generate(
+                                    model="dall-e-3",
+                                    prompt=img_prompt,
+                                    size="1024x1024",
+                                    quality="standard",
+                                    n=1,
+                                )
+                                img_url = dalle_resp.data[0].url
+                                st.image(img_url, caption=f"VISUAL CORTEX ENGRAM: {img_prompt}")
+                                # Download for local saving
+                                img_raw = requests.get(img_url).content
+                            else:
+                                # Fallback to Hugging Face Free API
+                                img_raw = generate_image_free(img_prompt)
+                                if img_raw:
+                                    is_base64 = False
+                                    st.image(img_raw, caption=f"VISUAL CORTEX ENGRAM (HF): {img_prompt}")
+                                    img_url = None
+                                else:
+                                    if not cfg.HF_API_KEY:
+                                        st.error("VISUAL CORTEX OFFLINE: Afegeix HF_API_KEY al teu .env (huggingface.co/settings/tokens)")
+                                    else:
+                                        st.error("VISUAL CORTEX FAILURE: Hugging Face API Error")
+                                    full_response += f"\n\n[SYSTEM ALERT: VISUAL CORTEX FAILURE]"
+
+                            # --- LOCAL SAVING TO THE BUNKER ---
+                            if img_raw:
+                                from pathlib import Path
+                                bunker_dir = Path.home() / "Baixades" / "Bunker" / "Creuetes"
+                                bunker_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                # Sanitize filename from prompt
+                                clean_name = re.sub(r'[^\w\s-]', '', img_prompt).strip().replace(' ', '_')[:50].upper()
+                                if not clean_name: clean_name = "VISUAL_ENGRAM"
+                                
+                                # Determine extension
+                                ext = ".png" if st.session_state.dalle_client else ".jpg"
+                                filename = f"{clean_name}{ext}" if not is_base64 else f"{clean_name}.webp"
+
+                                file_path = bunker_dir / filename
+                                
+                                with open(file_path, "wb") as f:
+                                    f.write(img_raw)
+                                
+                                st.success(f"📁 ENGRAM LOCALIZED: {file_path}")
+                                full_response += f"\n\n[Visual Engram Saved to Bunker: {file_path}]"
+                                
+                                # Save image for chat history
+                                assistant_image = img_raw
+                            
+                            status.update(label="VISUAL ENGRAM COMPLETE", state="complete")
+                        except Exception as img_e:
+                            st.error(f"IMAGE GEN ERROR: {img_e}")
+                            status.update(label="VISUAL ENGRAM FAILED", state="error")
+
+                # E. Persist Memory
                 if st.session_state.memory_manager:
                     # We only save the text prompt to memory to save space/complexity for now
                     memory_text = f"User asked: {prompt}\n(With {len(uploaded_files)} files attached)\nAI answered: {full_response}"
@@ -805,4 +947,8 @@ if prompt:
 
     # 3. Save Assistant Message
     # We must also save the text into session_state so it renders on refresh
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    msg_data = {"role": "assistant", "content": full_response}
+    if assistant_image:
+        msg_data["image"] = assistant_image
+        
+    st.session_state.messages.append(msg_data)

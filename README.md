@@ -1,3 +1,4 @@
+![WhatsApp Image 2026-02-21 at 17 11 38](https://github.com/user-attachments/assets/707153a8-4b0a-4306-ab4f-f2b072a61aaf)
 Added voice selector ( male /female ) Catalan/Spanish/English, Text and image uploader, and Image Generator.
 
 About Image Generator: add paid OpenAI api-key or Free Hugging Face api-key ( add all the permissions in https://huggingface.co/settings/tokens )

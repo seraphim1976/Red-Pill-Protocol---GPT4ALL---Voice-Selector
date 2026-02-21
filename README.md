@@ -10,7 +10,7 @@ Deploy: bash scripts/install_neo.sh
 uv run red-pill web --mode embedded
 
 🔴 SYSTEM STATUS
-BUNKER: OFFLINE
+BUNKER: OFFLINE ( ✅ The Bunker es tu cyber-cerebro externo, donde se guardan tus recuerdos como fragmentos de código. )
 
 Storage folder local_qdrant_db_v2 is already accessed by another instance of Qdrant client. If you require concurrent access, use Qdrant server instead.
 

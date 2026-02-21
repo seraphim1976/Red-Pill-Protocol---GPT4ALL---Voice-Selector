@@ -168,8 +168,13 @@ EOF
 
 if [[ "$OS_TYPE" == "Linux" ]]; then
     systemctl --user daemon-reload
-    systemctl --user enable --now qdrant.service
-    echo -e "${GREEN}Servidor Qdrant activo via systemd.${NC}"
+    systemctl --user start qdrant.service
+    if systemctl --user is-active --quiet qdrant.service; then
+        echo -e "${GREEN}Servidor Qdrant activo via systemd.${NC}"
+    else
+        echo -e "${RED}Error: El servidor Qdrant no pudo iniciarse.${NC}"
+        exit 1
+    fi
 else
     echo -e "${BLUE}macOS detectado. Inicia Qdrant manualmente con:${NC}"
     echo "podman run -d --name qdrant -p 6333:6333 -p 6334:6334 -v $IA_DIR/storage:/qdrant/storage:Z qdrant/qdrant"
@@ -212,6 +217,7 @@ echo -e "${GREEN}Configurando vínculo de identidad y reglas globales...${NC}"
 mkdir -p "$HOME/.gemini/antigravity/rules"
 
 if [ -f "$SCRIPT_SRC_DIR/../seeds/identity_template.md" ]; then
+    mkdir -p "$HOME/.agent/rules"
     cp "$SCRIPT_SRC_DIR/../seeds/identity_template.md" "$HOME/.agent/identity.md"
     # Compatibilidad macOS/Linux para sed -i
     if [[ "$OS_TYPE" == "Darwin" ]]; then

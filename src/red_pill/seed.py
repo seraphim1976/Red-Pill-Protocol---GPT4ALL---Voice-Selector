@@ -68,12 +68,15 @@ def seed_project(manager: MemoryManager):
     ]
 
     for m in genesis_memories:
+        meta = m["meta"].copy()
+        is_immune = meta.pop("immune", False)
         manager.add_memory(
             m["coll"], 
             m["text"], 
             importance=1.0, 
-            metadata=m["meta"], 
-            point_id=m["id"]
+            metadata=meta, 
+            point_id=m["id"],
+            is_immune=is_immune
         )
 
     logger.info("Neo has awakened. The synaptic graph is live.")

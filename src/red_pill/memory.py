@@ -25,7 +25,7 @@ class MemoryManager:
     def __init__(self, url: str = cfg.QDRANT_URL, path: Optional[str] = cfg.QDRANT_PATH):
         if cfg.QDRANT_MODE == "server":
             logger.info(f"Initializing Qdrant in Server Mode at: {url}")
-            self.client = QdrantClient(url=url, api_key=cfg.QDRANT_API_KEY)
+            self.client = QdrantClient(url=url, api_key=cfg.QDRANT_API_KEY, check_compatibility=False)
         else:
             logger.info(f"Initializing Qdrant in Embedded Mode at: {path}")
             self.client = QdrantClient(path=path)
@@ -60,7 +60,7 @@ class MemoryManager:
                 )
             )
 
-    def add_memory(self, collection: str, text: str, importance: float = 1.0, metadata: Optional[Dict[str, Any]] = None, point_id: Optional[str] = None) -> str:
+    def add_memory(self, collection: str, text: str, importance: float = 1.0, metadata: Optional[Dict[str, Any]] = None, point_id: Optional[str] = None, is_immune: bool = False) -> str:
         """
         Stores a new engram in the specified collection and returns its ID.
         """
@@ -94,7 +94,7 @@ class MemoryManager:
             "reinforcement_score": 1.0,
             "created_at": time.time(),
             "last_recalled_at": time.time(),
-            "immune": False,
+            "immune": is_immune,
             **clean_metadata
         }
         
@@ -199,14 +199,71 @@ class MemoryManager:
             # We also include immune memories which might have 1.0 but are never < 0.2 anyway.
             # But just in case, we could use an OR. However, standard scores start at 1.0.
 
-        response = self.client.query_points(
-            collection_name=collection,
-            query=vector,
-            query_filter=search_filter,
-            limit=limit * (2 if deep_recall else 1), # Double limit for Deep Recall as per spec 6.2
-            with_payload=True,
-            with_vectors=False # Optimization: vectors are not needed for reinforcement logic
-        )
+        try:
+            response = self.client.query_points(
+                collection_name=collection,
+                query=vector,
+                query_filter=search_filter,
+                limit=limit * (2 if deep_recall else 1), # Double limit for Deep Recall as per spec 6.2
+                with_payload=True,
+                with_vectors=False # Optimization: vectors are not needed for reinforcement logic
+            )
+        except Exception as e:
+            # Fallback for Qdrant < 1.10.0 or client incompatibilities
+            from qdrant_client.http.exceptions import UnexpectedResponse
+            
+            is_404 = isinstance(e, UnexpectedResponse) and e.status_code == 404
+            is_attr_error = isinstance(e, AttributeError) and ("query_points" in str(e) or "search" in str(e))
+            
+            if is_404 or is_attr_error:
+                logger.warning(f"Falling back from query_points due to compatibility issue: {e}")
+                
+                # Robust multi-stage search fallback
+                search_results = None
+                
+                # 1. Try .search (Standard but potentially removed/renamed)
+                if hasattr(self.client, "search"):
+                    search_results = self.client.search(
+                        collection_name=collection,
+                        query_vector=vector,
+                        query_filter=search_filter,
+                        limit=limit * (2 if deep_recall else 1),
+                        with_payload=True,
+                        with_vectors=False
+                    )
+                # 2. Try .search_points (Alternative name in some versions)
+                elif hasattr(self.client, "search_points"):
+                    search_results = self.client.search_points(
+                        collection_name=collection,
+                        query_vector=vector,
+                        query_filter=search_filter,
+                        limit=limit * (2 if deep_recall else 1),
+                        with_payload=True,
+                        with_vectors=False
+                    )
+                # 3. Direct REST API fallback (Most robust for very old servers or broken clients)
+                elif hasattr(self.client, "http") and hasattr(self.client.http, "search_api"):
+                    logger.info("Using raw REST API fallback for search")
+                    search_response = self.client.http.search_api.search_points(
+                        collection_name=collection,
+                        search_request=models.SearchRequest(
+                            vector=vector,
+                            filter=search_filter,
+                            limit=limit * (2 if deep_recall else 1),
+                            with_payload=True,
+                            with_vector=False
+                        )
+                    )
+                    search_results = search_response.result
+                
+                if search_results is not None:
+                    # Normalize response for downstream logic (search returns a list of ScoredPoint)
+                    from types import SimpleNamespace
+                    response = SimpleNamespace(points=search_results)
+                else:
+                    raise AttributeError(f"Could not find a valid search method on QdrantClient. Last error: {e}")
+            else:
+                raise e
         
         # Reinforcement Increment Map
         # stacks increments from hits (0.1) and synaptic propagation (0.05)
